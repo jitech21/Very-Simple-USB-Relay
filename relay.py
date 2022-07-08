@@ -1,5 +1,5 @@
 """
-This relay object uses the HID library instead of usb. 
+This relay object uses the HID library instead of usb.
 
 Some scant details about the USB Relay
 http://vusb.wikidot.com/project:driver-less-usb-relays-hid-interface
@@ -23,8 +23,7 @@ import argparse
 try:
     import hid
 except ImportError as error:
-    print(error)
-    raise Exception('Module install via: pip install hidapi')
+    raise Exception('Module install via: pip install hidapi') from error
 
 
 class Relay:
@@ -87,6 +86,10 @@ class Relay:
         self.device_instance.send_feature_report(message)
 
     def get_feature_report(self):
+        """
+        show available feature
+        :return: show feature
+        """
         # If 0 is passed as the feature, then 0 is prepended to the report. However,
         # if 1 is passed, the number is not added and only 8 chars are returned.
         feature = 1
@@ -138,21 +141,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', required=True, help="Select relay port")
     parser.add_argument('--switch', required=False, help="Turn on/off reley")
-    parser.add_argument('--idVvendor', required=False, help="idVendor id (linux cmd : lsusb)")
+    parser.add_argument('--idVendor', required=False, help="idVendor id (linux cmd : lsusb)")
     parser.add_argument('--idProduct', required=False, help="idProduct id (linux cmd : lsusb)")
     args = parser.parse_args()
     port = int(args.port)
     if args.switch == 'False':
-        switchOn = False
+        switchon = False
     elif args.switch == 'True':
-        switchOn = True
+        switchon = True
     else:
-        switchOn = None
+        switchon = None
 
     # print(f'Port: {port}, switch: {switch}.')
-    relay = Relay(idvendor=args.idVendor is not None if args.idVendor else 0x16c0,
-                  idproduct=args.idProduct is not None if args.idProduct else 0x05df)
-    print(relay.state(relayport=port, turnon=switchOn))
+    relay = Relay(idvendor=args.idVendor is not None if args.idVendor else 0x16c0, idproduct=args.idProduct is not None if args.idProduct else 0x05df)
+    print(relay.state(relayport=port, turnon=switchon))
 # from time import sleep
 
 # sleep(10)
