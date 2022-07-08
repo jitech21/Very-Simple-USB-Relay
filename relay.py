@@ -1,8 +1,4 @@
-import atexit
-import argparse
-import sys
 """
-
 This relay object uses the HID library instead of usb. 
 
 Some scant details about the USB Relay
@@ -21,128 +17,142 @@ https://github.com/trezor/cython-hidapi/blob/6057d41b5a2552a70ff7117a9d19fc21bf8
 
 This code was reworked from code in this repos: https://github.com/jaketeater/Very-Simple-USB-Relay
 """
+import atexit
+import argparse
 
 try:
-	import hid
-except ImportError:
-	raise Exception('Module install via: pip install hidapi')
+    import hid
+except ImportError as error:
+    print(error)
+    raise Exception('Module install via: pip install hidapi')
 
 
-class Relay(object):
-	"""docstring for Relay"""
-	def __init__(self, idVendor=0x16c0, idProduct=0x05df):
-		self.h = hid.device()
-		self.h.open(idVendor, idProduct)
-		self.h.set_nonblocking(1)
-		atexit.register(self.cleanup)
+class Relay:
+    """docstring for Relay"""
 
-	def cleanup(self):
-		self.h.close()
+    def __init__(self, idvendor=0x16c0, idproduct=0x05df):
+        self.device_instance = hid.device()
+        self.device_instance.open(idvendor, idproduct)
+        self.device_instance.set_nonblocking(1)
+        atexit.register(self.cleanup)
 
-	def get_switch_statuses_from_report(self, report):
-		"""
+    def cleanup(self):
+        """
+        cleanup close connection
+        """
+        self.device_instance.close()
 
-		The report returned is a 8 int list, ex:
-		
-		[76, 72, 67, 88, 73, 0, 0, 2]
+    def get_switch_statuses_from_report(self, report):
+        """
 
-		The ints are passed as chars, and this page can help interpret:
-		https://www.branah.com/ascii-converter
+        The report returned is a 8 int list, ex:
 
-		The first 5 in the list are a unique ID, in case there is more than one switch.
+        [76, 72, 67, 88, 73, 0, 0, 2]
 
-		The last three seem to be reserved for the status of the relays. The status should
-		be interpreted in binary and in reverse order.  For example:
+        The ints are passed as chars, and this page can help interpret:
+        https://www.branah.com/ascii-converter
 
-		2 = 00000010
+        The first 5 in the list are a unique ID, in case there is more than one switch.
 
-		This means that switch 1 is off and switch 2 is on, and all others are off.
+        The last three seem to be reserved for the status of the relays. The status should
+        be interpreted in binary and in reverse order.  For example:
 
-		"""
+        2 = 00000010
 
-		# Grab the 8th number, which is a integer
-		switch_statuses = report[7]
+        This means that switch 1 is off and switch 2 is on, and all others are off.
 
-		# Convert the integer to a binary, and the binary to a list.
-		switch_statuses = [int(x) for x in list('{0:08b}'.format(switch_statuses))]
+        """
 
-		# Reverse the list, since the status reads from right to left
-		switch_statuses.reverse()
+        # Grab the 8th number, which is a integer
+        switch_statuses = report[7]
 
-		# The switch_statuses now looks something like this:
-		# [1, 1, 0, 0, 0, 0, 0, 0]
-		# Switch 1 and 2 (index 0 and 1 respectively) are on, the rest are off.
+        # Convert the integer to a binary, and the binary to a list.
+        switch_statuses = [int(x) for x in list('{0:08b}'.format(switch_statuses))]
 
-		return switch_statuses
+        # Reverse the list, since the status reads from right to left
+        switch_statuses.reverse()
 
-	def send_feature_report(self, message):
-		self.h.send_feature_report(message)
+        # The switch_statuses now looks something like this:
+        # [1, 1, 0, 0, 0, 0, 0, 0]
+        # Switch 1 and 2 (index 0 and 1 respectively) are on, the rest are off.
 
-	def get_feature_report(self):
-		# If 0 is passed as the feature, then 0 is prepended to the report. However,
-		# if 1 is passed, the number is not added and only 8 chars are returned.
-		feature = 1
-		# This is the length of the report.
-		length = 8
-		return self.h.get_feature_report(feature, length)
+        return switch_statuses
 
-	def state(self, relay, on=None):
-		"""
+    def send_feature_report(self, message):
+        """
+        send_feature_report
+        :param message: send array of setters
+        :return:
+        """
+        self.device_instance.send_feature_report(message)
 
-		Getter/Setter for the relay.  
+    def get_feature_report(self):
+        # If 0 is passed as the feature, then 0 is prepended to the report. However,
+        # if 1 is passed, the number is not added and only 8 chars are returned.
+        feature = 1
+        # This is the length of the report.
+        length = 8
+        return self.device_instance.get_feature_report(feature, length)
 
-		Getter - If only a relay is specified (with an int), then that relay's status 
-		is returned.  If relay = 0, a list of all the statuses is returned.
-		True = on, False = off.
+    def state(self, relayport, turnon=None):
+        """
 
-		Setter - If a relay and on are specified, then the relay(s) status will be set.
-		Either specify the specific relay, 1-8, or 0 to change the state of all relays.
-		on=True will turn the relay on, on=False will turn them off.
+        Getter/Setter for the relay.
 
-		"""
-		if on is not None:
-			if relay == 0:
-				if on:
-					message = [0xFE]
-				else:
-					message = [0xFC]
-			else:
-				if on:
-					message = [0xFF, relay]
-				else:
-					message = [0xFD, relay]
-			self.send_feature_report(message)
+        Getter - If only a relay is specified (with an int), then that relay's status
+        is returned.  If relay = 0, a list of all the statuses is returned.
+        True = on, False = off.
 
-		if relay == 0:
-			report = self.get_feature_report()
-			switch_statuses = self.get_switch_statuses_from_report(report)
-			status = []
-			for s in switch_statuses:
-				status.append(bool(s))
-		else:
-			report = self.get_feature_report()
-			switch_statuses = self.get_switch_statuses_from_report(report)
-			status = bool(switch_statuses[relay-1])
-		return status
+        Setter - If a relay and on are specified, then the relay(s) status will be set.
+        Either specify the specific relay, 1-8, or 0 to change the state of all relays.
+        on=True will turn the relay on, on=False will turn them off.
+
+        """
+        if turnon is not None:
+            if relayport == 0:
+                if turnon:
+                    message = [0xFE]
+                else:
+                    message = [0xFC]
+            else:
+                if turnon:
+                    message = [0xFF, relayport]
+                else:
+                    message = [0xFD, relayport]
+            self.send_feature_report(message)
+
+        if relayport == 0:
+            report = self.get_feature_report()
+            switch_statuses = self.get_switch_statuses_from_report(report)
+            status = []
+            for switch_status in switch_statuses:
+                status.append(bool(switch_status))
+        else:
+            report = self.get_feature_report()
+            switch_statuses = self.get_switch_statuses_from_report(report)
+            status = bool(switch_statuses[relayport - 1])
+        return status
+
 
 if __name__ == '__main__':
-	parser = argparse.ArgumentParser()
-	parser.add_argument('--port', required=True, help="Select relay port")
-	parser.add_argument('--switch', required=False, help="Turn on/off reley")
-	parser.add_argument('--idVendor', required=False, help="idVendor id (linux cmd : lsusb)")
-	parser.add_argument('--idProduct', required=False, help="idProduct id (linux cmd : lsusb)")
-	args = parser.parse_args()
-	port: int = int(args.port)
-	if args.switch == 'False':
-		switch = False
-	elif args.switch == 'True':
-		switch = True
-	else:
-		switch = None
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', required=True, help="Select relay port")
+    parser.add_argument('--switch', required=False, help="Turn on/off reley")
+    parser.add_argument('--idVvendor', required=False, help="idVendor id (linux cmd : lsusb)")
+    parser.add_argument('--idProduct', required=False, help="idProduct id (linux cmd : lsusb)")
+    args = parser.parse_args()
+    port = int(args.port)
+    if args.switch == 'False':
+        switchOn = False
+    elif args.switch == 'True':
+        switchOn = True
+    else:
+        switchOn = None
 
-	#print(f'Port: {port}, switch: {switch}.')
-	relay = Relay(idVendor=args.idVendor is not None if args.idVendor else 0x16c0, idProduct=args.idProduct is not None if args.idProduct else 0x05df)
-	print(relay.state(port, on=switch))
-	# from time import sleep
+    # print(f'Port: {port}, switch: {switch}.')
+    relay = Relay(idvendor=args.idVendor is not None if args.idVendor else 0x16c0,
+                  idproduct=args.idProduct is not None if args.idProduct else 0x05df)
+    print(relay.state(relayport=port, turnon=switchOn))
+# from time import sleep
 
-	# sleep(10)
+# sleep(10)
