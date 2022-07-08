@@ -39,3 +39,10 @@ Then save the relay.py in your projects folder and:
     python relay.py --port 1-8 --switch True/False
     - Show status relay
     python relay.py --port 0-8 (0 - all status, 1-8 - port status)
+
+# Test
+| OS | Works       |
+|----|-------------|
+| Windows | Not-working |
+| Linux | Works fine  |
+| Mac OS | Works fine  |
